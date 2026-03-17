@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>dashboard</title>
+
+<style>
+body {
+    background: radial-gradient(circle at top, #0a0a0a, #000);
+    color: #0ff;
+    font-family: 'Segoe UI', sans-serif;
+    margin: 0;
+    padding: 10px;
+
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    gap: 10px;
+    height: 100vh;
+}
+
+.panel {
+    background: rgba(20,20,20,0.7);
+    border-radius: 10px;
+    padding: 10px;
+    box-shadow: 0 0 15px rgba(0,255,255,0.1);
+}
+
+@media (max-width: 800px) {
+    body {
+        grid-template-rows: auto auto auto 1fr auto;
+    }
+
+    #chartContainer {
+        height: 40vh;
+    }
+}
+
+#chartContainer {
+    height: 100%;
+    min-height: 300px;
+}
+</style>
+
+</head>
+<body>
+
+<h1>⚡ SENSOR CORE</h1>
+<h2 id="currentTemp">-- °C</h2>
+
+<div class="panel controls">
+
+    <div>
+        <b>Sensors</b>
+        <div id="sensorList"></div>
+    </div>
+
+    <div>
+        <b>Display</b>
+        <label><input type="checkbox" id="showRaw" checked> Raw</label>
+        <label><input type="checkbox" id="showSmooth" checked> Smooth</label>
+        <label><input type="checkbox" id="showAvg"> Avg</label>
+    </div>
+
+    <div>
+        <b>Resolution</b>
+        <select id="resolution">
+            <option value="0">Raw</option>
+            <option value="1">1 min</option>
+            <option value="2">2 min</option>
+            <option value="5">5 min</option>
+            <option value="10">10 min</option>
+        </select>
+    </div>
+
+</div>
+
+<div class="panel">
+    <label>UI Scale</label>
+    <input type="range" id="uiScale" min="0.7" max="1.5" step="0.1" value="1">
+</div>
+
+<div class="panel">
+    <button id="load">Load</button>
+</div>
+
+<div class="panel">
+    <button id="load">Load</button>
+    <button id="resetZoom">Reset Zoom</button>
+</div>
+
+<div class="panel" id="chartContainer">
+    <canvas id="chart"></canvas>
+</div>
+
+<div class="panel" id="stats">
+    <div id="statsText"></div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+
+</body>
+</html>
