@@ -8,9 +8,10 @@ Chart.register(zoomPlugin);
 const neonGlow = {
     id: 'neonGlow',
     beforeDatasetDraw(chart, args) {
+        if (!args.meta.dataset) return;
         const ctx = chart.ctx;
         ctx.save();
-        ctx.shadowColor = args.meta.dataset.options.borderColor;
+        ctx.shadowColor = args.meta.dataset.options?.borderColor || args.meta.dataset.borderColor;
         ctx.shadowBlur = 15;
     },
     afterDatasetDraw(chart) {
@@ -103,6 +104,7 @@ function loadSettings() {
 window.addEventListener("DOMContentLoaded", () => {
 
     const chartEl = document.getElementById('chart');
+    const pieChartEl = document.getElementById('pieChart');
     const sensorList = document.getElementById('sensorList');
 
     const palette = [
@@ -110,6 +112,7 @@ window.addEventListener("DOMContentLoaded", () => {
     ];
 
     let chart;
+    let pieChart;
     let dataCache = {}; // Cache for sensor data
 
     async function getSensors() {
@@ -209,6 +212,9 @@ window.addEventListener("DOMContentLoaded", () => {
         if (saved.period)
             document.getElementById("period").value = saved.period;
 
+        if (saved.chartType)
+            document.getElementById("chartType").value = saved.chartType;
+
         // Toggle custom date range visibility
         const periodSelect = document.getElementById("period");
         const customRange = document.getElementById("customRange");
@@ -284,6 +290,7 @@ window.addEventListener("DOMContentLoaded", () => {
             sensors: selected,
             resolution: document.getElementById("resolution").value,
             period: period,
+            chartType: document.getElementById("chartType").value,
             showRaw: document.getElementById("showRaw").checked,
             showSmooth: document.getElementById("showSmooth").checked,
             showAvg: document.getElementById("showAvg").checked
@@ -305,6 +312,10 @@ window.addEventListener("DOMContentLoaded", () => {
             // Filter data by selected period (already sorted oldest -> newest)
             let data = filterByPeriod(json, period);
 
+            if (!data || data.length === 0) {
+                continue; // Skip this sensor, continue with others
+            }
+
             data = resample(data, Number(settings.resolution));
 
             const temps = data.map(x => x.temperature);
@@ -322,6 +333,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     label: id,
                     data: temps,
                     borderColor: color,
+                    backgroundColor: color + '80',
                     tension: 0.2
                 });
             }
@@ -331,6 +343,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     label: id + " smooth",
                     data: movingAvg(temps),
                     borderColor: color,
+                    backgroundColor: color + '80',
                     borderDash: [3,3]
                 });
             }
@@ -342,6 +355,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     label: id + " avg",
                     data: temps.map(() => avg),
                     borderColor: "#888",
+                    backgroundColor: "#88880",
                     borderDash: [5,5]
                 });
             }
@@ -349,10 +363,238 @@ window.addEventListener("DOMContentLoaded", () => {
             document.getElementById("statsText").innerText =
                 `Min: ${Math.min(...temps).toFixed(2)} | Max: ${Math.max(...temps).toFixed(2)}`;
         }
+        
+        // Check if we have any data to display
+        if (datasets.length === 0 || labels.length === 0) {
+            document.getElementById("currentTemp").innerText = "-- °C";
+            document.getElementById("statsText").innerText = "No data available";
+            return;
+        }
 
         chart.data.labels = labels;
         chart.data.datasets = datasets;
-        chart.update();
+        
+        // Handle chart type switching
+        const chartType = settings.chartType;
+        const chartContainer = document.getElementById('chartContainer');
+        const pieChartContainer = document.getElementById('pieChartContainer');
+        
+        if (chartType === 'line' || chartType === 'bar') {
+            // Show line/bar chart
+            chartContainer.style.display = 'block';
+            pieChartContainer.style.display = 'none';
+            
+            // Destroy pie chart if exists to free canvas
+            if (pieChart) {
+                pieChart.destroy();
+                pieChart = null;
+            }
+            
+            // For bar charts, we need to destroy and recreate the chart
+            if (chartType === 'bar' && chart.config.type === 'line') {
+                chart.destroy();
+                chart = new Chart(chartEl, {
+                    type: 'bar',
+                    data: { labels: [], datasets: [] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false
+                        },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: '#0ff',
+                                    boxWidth: 10,
+                                    font: { size: 10 }
+                                }
+                            },
+                            zoom: {
+                                pan: {
+                                    enabled: true,
+                                    mode: 'x'
+                                },
+                                zoom: {
+                                    wheel: { enabled: true },
+                                    pinch: { enabled: true },
+                                    mode: 'x'
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: { color: '#0ff' },
+                                grid: { color: 'rgba(0,255,255,0.1)' }
+                            },
+                            y: {
+                                ticks: { color: '#0ff' },
+                                grid: { color: 'rgba(0,255,255,0.1)' }
+                            }
+                        }
+                    }
+                });
+            } else if (chartType === 'line' && chart.config.type === 'bar') {
+                // Switch back to line
+                chart.destroy();
+                chart = new Chart(chartEl, {
+                    type: 'line',
+                    data: { labels: [], datasets: [] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false
+                        },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: '#0ff',
+                                    boxWidth: 10,
+                                    font: { size: 10 }
+                                }
+                            },
+                            zoom: {
+                                pan: {
+                                    enabled: true,
+                                    mode: 'x'
+                                },
+                                zoom: {
+                                    wheel: { enabled: true },
+                                    pinch: { enabled: true },
+                                    mode: 'x'
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: { color: '#0ff' },
+                                grid: { color: 'rgba(0,255,255,0.1)' }
+                            },
+                            y: {
+                                ticks: { color: '#0ff' },
+                                grid: { color: 'rgba(0,255,255,0.1)' }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            chart.update();
+        } else {
+            // Show pie/doughnut chart - use already fetched data
+            chartContainer.style.display = 'none';
+            pieChartContainer.style.display = 'block';
+            
+            // Destroy old chart if exists to free canvas
+            if (pieChart) {
+                pieChart.destroy();
+                pieChart = null;
+            }
+            
+            if (!selected.length) return;
+            
+            // Gather all temperature data
+            let allTemps = [];
+            for (let i = 0; i < selected.length; i++) {
+                const id = selected[i];
+                const json = await getData(id, needsFreshData);
+                let data = filterByPeriod(json, period);
+                data = resample(data, Number(settings.resolution));
+                const temps = data.map(x => x.temperature);
+                allTemps = allTemps.concat(temps);
+            }
+            
+            let pieLabels, pieData;
+            
+            if (chartType === 'pie') {
+                // Temperature distribution (histogram-style)
+                const numRanges = 8;
+                const minTemp = Math.min(...allTemps);
+                const maxTemp = Math.max(...allTemps);
+                const rangeSize = (maxTemp - minTemp) / numRanges;
+                
+                // Create ranges
+                pieLabels = [];
+                pieData = new Array(numRanges).fill(0);
+                
+                for (let i = 0; i < numRanges; i++) {
+                    const start = minTemp + i * rangeSize;
+                    const end = start + rangeSize;
+                    pieLabels.push(start.toFixed(1) + '-' + end.toFixed(1) + '°C');
+                }
+                
+                // Count temperatures in each range
+                allTemps.forEach(t => {
+                    let idx = Math.floor((t - minTemp) / rangeSize);
+                    if (idx >= numRanges) idx = numRanges - 1;
+                    pieData[idx]++;
+                });
+            } else if (chartType === 'doughnut') {
+                // Temperature jump (diff) distribution
+                const numRanges = 6;
+                const diffs = [];
+                
+                for (let i = 1; i < allTemps.length; i++) {
+                    diffs.push(Math.abs(allTemps[i] - allTemps[i-1]));
+                }
+                
+                if (diffs.length === 0) {
+                    pieLabels = ['No data'];
+                    pieData = [1];
+                } else {
+                    const minDiff = Math.min(...diffs);
+                    const maxDiff = Math.max(...diffs);
+                    const rangeSize = (maxDiff - minDiff) / numRanges || 0.1;
+                    
+                    pieLabels = [];
+                    pieData = new Array(numRanges).fill(0);
+                    
+                    for (let i = 0; i < numRanges; i++) {
+                        const start = minDiff + i * rangeSize;
+                        const end = start + rangeSize;
+                        pieLabels.push(start.toFixed(2) + '-' + end.toFixed(2) + '°');
+                    }
+                    
+                    diffs.forEach(d => {
+                        let idx = Math.floor((d - minDiff) / rangeSize);
+                        if (idx >= numRanges) idx = numRanges - 1;
+                        pieData[idx]++;
+                    });
+                }
+            }
+            
+            // Create pie chart
+            pieChart = new Chart(pieChartEl, {
+                type: chartType,
+                data: { labels: pieLabels, datasets: [{
+                    data: pieData,
+                    backgroundColor: [
+                        '#00ffff','#00ff88','#ffaa00','#ff00ff','#ff0055','#00aaff','#aa00ff','#ff5500'
+                    ],
+                    borderColor: '#000',
+                    borderWidth: 2
+                }] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#0ff', font: { size: 11 } }
+                        },
+                        title: {
+                            display: true,
+                            text: chartType === 'pie' ? 'Temperature Distribution' : 'Temperature Jump Distribution',
+                            color: '#0ff'
+                        }
+                    }
+                }
+            });
+        }
     }
 
     document.getElementById('load').onclick = load;
