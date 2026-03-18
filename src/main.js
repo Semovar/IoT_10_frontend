@@ -50,6 +50,16 @@ Chart.register(neonGlow, crosshair);
 
 // ===== helpers =====
 
+function formatDateTimeEU(isoString) {
+    const date = new Date(isoString);
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const yy = String(date.getFullYear()).slice(-2);
+    const hh = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${dd}-${mm}-${yy} ${hh}:${min}`;
+}
+
 function movingAvg(arr, k=5) {
     return arr.map((_,i) =>
         arr.slice(Math.max(0,i-k), i+1)
@@ -100,15 +110,76 @@ window.addEventListener("DOMContentLoaded", () => {
     ];
 
     let chart;
+    let dataCache = {}; // Cache for sensor data
 
     async function getSensors() {
         const res = await fetch('/api/sensors');
         return res.json();
     }
 
-    async function getData(sensorId) {
-        const res = await fetch(`/api/measurements?sensorIds=${sensorId}&limit=200`);
-        return res.json();
+    // Fetch data - uses cache or gets fresh data
+    async function getData(sensorId, forceRefresh = false) {
+        const now = new Date();
+        const cacheAge = dataCache[sensorId]?.timestamp ? 
+            now.getTime() - new Date(dataCache[sensorId].timestamp).getTime() : Infinity;
+        
+        // Use cache if less than 5 minutes old and not forcing refresh
+        if (!forceRefresh && dataCache[sensorId] && cacheAge < 5 * 60 * 1000) {
+            return dataCache[sensorId];
+        }
+        
+        // Fetch fresh data - up to 7 days
+        const url = `/api/measurements?sensorIds=${sensorId}&limit=5000`;
+        const res = await fetch(url);
+        const json = await res.json();
+        
+        // Cache the data
+        dataCache[sensorId] = json;
+        return json;
+    }
+
+    // Filter data by period
+    function filterByPeriod(data, period) {
+        const now = new Date();
+        let start;
+
+        switch (period) {
+            case '1h':
+                start = new Date(now.getTime() - 60 * 60 * 1000);
+                break;
+            case '6h':
+                start = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+                break;
+            case '24h':
+                start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                break;
+            case '7d':
+                start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                break;
+            case '30d':
+                start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                break;
+            case 'custom':
+                const dateFrom = document.getElementById('dateFrom').value;
+                const dateTo = document.getElementById('dateTo').value;
+                if (dateFrom && dateTo) {
+                    const customStart = new Date(dateFrom);
+                    const customEnd = new Date(dateTo);
+                    return data.data
+                        .filter(p => {
+                            const t = new Date(p.timestamp);
+                            return t >= customStart && t <= customEnd;
+                        })
+                        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                }
+                return data.data;
+            default:
+                start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        }
+
+        return data.data
+            .filter(p => new Date(p.timestamp) >= start)
+            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     }
 
     async function init() {
@@ -134,6 +205,17 @@ window.addEventListener("DOMContentLoaded", () => {
         // restore UI
         if (saved.resolution)
             document.getElementById("resolution").value = saved.resolution;
+
+        if (saved.period)
+            document.getElementById("period").value = saved.period;
+
+        // Toggle custom date range visibility
+        const periodSelect = document.getElementById("period");
+        const customRange = document.getElementById("customRange");
+        periodSelect.addEventListener("change", () => {
+            customRange.style.display = periodSelect.value === "custom" ? "block" : "none";
+        });
+        customRange.style.display = periodSelect.value === "custom" ? "block" : "none";
 
         ["showRaw","showSmooth","showAvg"].forEach(id => {
             if (saved[id] !== undefined)
@@ -193,9 +275,15 @@ window.addEventListener("DOMContentLoaded", () => {
             document.querySelectorAll('#sensorList input:checked')
         ).map(cb => cb.value);
 
+        const period = document.getElementById("period").value;
+        
+        // Determine if we need fresh data (period > 7 days or custom range)
+        const needsFreshData = ['30d', 'custom'].includes(period);
+
         const settings = {
             sensors: selected,
             resolution: document.getElementById("resolution").value,
+            period: period,
             showRaw: document.getElementById("showRaw").checked,
             showSmooth: document.getElementById("showSmooth").checked,
             showAvg: document.getElementById("showAvg").checked
@@ -211,15 +299,18 @@ window.addEventListener("DOMContentLoaded", () => {
         for (let i = 0; i < selected.length; i++) {
 
             const id = selected[i];
-            const json = await getData(id);
-            let data = json.data.reverse();
+            // Fetch data - use cache for short periods, force refresh for long ones
+            const json = await getData(id, needsFreshData);
+            
+            // Filter data by selected period (already sorted oldest -> newest)
+            let data = filterByPeriod(json, period);
 
             data = resample(data, Number(settings.resolution));
 
             const temps = data.map(x => x.temperature);
 
             if (!labels.length)
-                labels = data.map(x => x.timestamp);
+                labels = data.map(x => formatDateTimeEU(x.timestamp));
 
             document.getElementById("currentTemp").innerText =
                 temps[temps.length - 1].toFixed(2) + " °C";

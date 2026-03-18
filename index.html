@@ -62,6 +62,22 @@ body {
     </div>
 
     <div>
+        <b>Period</b>
+        <select id="period">
+            <option value="1h">Last Hour</option>
+            <option value="6h">Last 6 Hours</option>
+            <option value="24h" selected>Last 24 Hours</option>
+            <option value="7d">Last 7 Days</option>
+            <option value="30d">Last 30 Days</option>
+            <option value="custom">Custom Range</option>
+        </select>
+        <div id="customRange" style="display: none;">
+            <label>From: <input type="datetime-local" id="dateFrom"></label>
+            <label>To: <input type="datetime-local" id="dateTo"></label>
+        </div>
+    </div>
+
+    <div>
         <b>Resolution</b>
         <select id="resolution">
             <option value="0">Raw</option>
